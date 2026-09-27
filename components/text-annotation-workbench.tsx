@@ -25,6 +25,7 @@ import {
   CircleHelp,
   FileDown,
   FileJson,
+  FileUp,
   GitCompareArrows,
   Keyboard,
   Link2,
@@ -65,6 +66,8 @@ import type {
   ViewMode,
   WorkspaceState
 } from '@/lib/types';
+import { ImportReviewPanel } from './import-review-panel';
+import { applyImportReview } from '@/lib/import-review';
 
 const MODE_COPY: Record<ViewMode, { label: string; hint: string }> = {
   reading: { label: '阅读版', hint: '只读正文，脚注按引用编号展开' },
@@ -620,6 +623,19 @@ export function TextAnnotationWorkbench() {
     download(`${document.title}.json`, JSON.stringify(document, null, 2), 'application/json;charset=utf-8');
   }
 
+  function applyReviewedImport(items: Parameters<typeof applyImportReview>[1]) {
+    let count = 0;
+    dispatch({
+      type: 'commit',
+      label: '预审确认导入校注',
+      mutate: (doc) => {
+        count = applyImportReview(doc, items);
+      }
+    });
+    setApiMessage(`导入预审完成：仅落入选中的 ${count} 条内容，历史快照未改动`);
+    setRightTab('conflicts');
+  }
+
   function exportHtml() {
     download(`${document.title}.html`, buildHtml(document), 'text/html;charset=utf-8');
   }
@@ -1008,6 +1024,12 @@ export function TextAnnotationWorkbench() {
                         </div>
                       ) : null}
                     </div>
+                  </ScrollShadow>
+                </Tab>
+
+                <Tab key="import" title="导入" className="px-0">
+                  <ScrollShadow className="max-h-[calc(100vh-210px)]">
+                    <ImportReviewPanel document={document} onApplied={(_, items) => applyReviewedImport(items)} />
                   </ScrollShadow>
                 </Tab>
 

@@ -25,6 +25,7 @@ import {
   CircleHelp,
   FileDown,
   FileJson,
+  FileUp,
   GitCompareArrows,
   Keyboard,
   Link2,
@@ -55,6 +56,8 @@ import {
   removeAnnotationReferences,
   updateSentenceText
 } from '@/lib/editor';
+import { applyImport, type AppliedImport, type ImportPreview } from '@/lib/import';
+import { ImportReviewModal } from './import-review-modal';
 import type {
   Annotation,
   AnnotationKind,
@@ -340,6 +343,7 @@ export function TextAnnotationWorkbench() {
   const [rightVersionId, setRightVersionId] = useState('current');
   const [snapshotLabel, setSnapshotLabel] = useState('');
   const [apiMessage, setApiMessage] = useState('模拟接口待命');
+  const [importOpen, setImportOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
   const workspace = state.workspace;
@@ -622,6 +626,23 @@ export function TextAnnotationWorkbench() {
 
   function exportHtml() {
     download(`${document.title}.html`, buildHtml(document), 'text/html;charset=utf-8');
+  }
+
+  function confirmImport(preview: ImportPreview): AppliedImport {
+    let result = { added: 0, updated: 0, conflicted: 0, merged: 0, droppedReferences: [], newIds: new Map() } as AppliedImport;
+    dispatch({
+      type: 'commit',
+      label: `预审导入 ${preview.selectedCount} 条校注`,
+      mutate: (doc) => {
+        result = applyImport(doc, preview);
+      }
+    });
+    const dropped = result.droppedReferences.reduce((sum, item) => sum + item.refs.length, 0);
+    setApiMessage(
+      `导入完成：新增 ${result.added}，更新 ${result.updated}，来源并存 ${result.conflicted}，合并 ${result.merged}` +
+        (dropped ? `；剔除 ${dropped} 个悬空引用` : '')
+    );
+    return result;
   }
 
   const mode = workspace.mode;
@@ -1011,6 +1032,50 @@ export function TextAnnotationWorkbench() {
                   </ScrollShadow>
                 </Tab>
 
+                <Tab key="import" title="导入">
+                  <ScrollShadow className="max-h-[calc(100vh-210px)]">
+                    <div className="space-y-4 pr-1">
+                      <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs leading-5 text-amber-900">
+                        <div className="flex items-center gap-2 font-semibold">
+                          <FileUp className="h-4 w-4" />
+                          导入预审
+                        </div>
+                        <p className="mt-1.5">
+                          粘贴他人整理的 JSON 校注包后，先区分<b>新增注释</b>、<b>同一条注释的更新</b>与<b>引用目标相同且类型相同的来源冲突</b>。
+                          逐项保留本地、采用来稿或合并后再确认；确认时只落选中内容，历史快照与无关注释保持原样。
+                        </p>
+                      </div>
+
+                      <Button
+                        fullWidth
+                        color="primary"
+                        variant="flat"
+                        startContent={<FileUp className="h-4 w-4" />}
+                        onPress={() => setImportOpen(true)}
+                      >
+                        粘贴校注包并预审
+                      </Button>
+
+                      <div className="rounded-xl border border-stone-200 p-3 text-xs leading-6 text-stone-600">
+                        <h3 className="mb-1 flex items-center gap-2 font-semibold text-stone-900"><CircleHelp className="h-4 w-4" />预审规则</h3>
+                        <ul className="ml-4 list-disc">
+                          <li>ID 与本地一致 → 按“更新”处理，可保留本地 / 采用来稿 / 合并。</li>
+                          <li>同目标、同类型但来源不同 → 列为来源冲突，可并存或合并。</li>
+                          <li>词级锚点失效时，按线索定位词语；找不到则挂接到所属句。</li>
+                          <li>引用 ID 自动重映射，悬空引用自动剔除，不破坏现有引用关系。</li>
+                          <li>无法定位、格式错误的条目不允许导入。</li>
+                        </ul>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button size="sm" variant="flat" onPress={exportHtml} startContent={<FileDown className="h-4 w-4" />}>导出 HTML</Button>
+                        <Button size="sm" variant="flat" onPress={exportJson} startContent={<FileJson className="h-4 w-4" />}>导出 JSON</Button>
+                      </div>
+                      <p className="text-[11px] leading-5 text-stone-500">{apiMessage}</p>
+                    </div>
+                  </ScrollShadow>
+                </Tab>
+
                 <Tab key="versions" title="版本">
                   <ScrollShadow className="max-h-[calc(100vh-210px)]">
                     <div className="space-y-4 pr-1">
@@ -1091,6 +1156,13 @@ export function TextAnnotationWorkbench() {
       <footer className="mx-auto max-w-[1800px] px-6 pb-8 text-center text-xs text-stone-400">
         数据保存在当前浏览器；清除站点数据会同时删除离线草稿与版本快照。
       </footer>
+
+      <ImportReviewModal
+        isOpen={importOpen}
+        onOpenChange={setImportOpen}
+        document={document}
+        onConfirmImport={confirmImport}
+      />
     </div>
   );
 }
